@@ -55,7 +55,8 @@ public class AudioHandler extends CordovaPlugin {
 
     public static String TAG = "AudioHandler";
     HashMap<String, AudioPlayer> players;	// Audio player object
-    ArrayList<AudioPlayer> pausedForPhone;     // Audio players that were paused when phone call came in
+    ArrayList<AudioPlayer> paused;     // Audio players that were paused (phonecall or minimize)
+    boolean notMinimized = true, notInOtherPage = true, notInCall = true;
     private int origVolumeStream = -1;
     private CallbackContext messageChannel;
 
@@ -209,11 +210,11 @@ public class AudioHandler extends CordovaPlugin {
 
             // If phone ringing, then pause playing
             if ("ringing".equals(data) || "offhook".equals(data)) {
-
+                notInCall = false;
                 // Get all audio players and pause them
                 for (AudioPlayer audio : this.players.values()) {
                     if (audio.getState() == AudioPlayer.STATE.MEDIA_RUNNING.ordinal()) {
-                        this.pausedForPhone.add(audio);
+                        this.paused.add(audio);
                         audio.pausePlaying();
                     }
                 }
@@ -222,10 +223,62 @@ public class AudioHandler extends CordovaPlugin {
 
             // If phone idle, then resume playing those players we paused
             else if ("idle".equals(data)) {
-                for (AudioPlayer audio : this.pausedForPhone) {
-                    audio.startPlaying(null);
+                notInCall = true;
+                if (notInCall && notInOtherPage && notMinimized) {
+                    for (AudioPlayer audio : this.paused) {
+                        audio.startPlaying(null);
+                    }
+                    this.paused.clear();
                 }
-                this.pausedForPhone.clear();
+            }
+        }
+
+        //if app life cycle
+        else if (id.equals("AppLifeCycle")) {
+            //if  app is minimized, then pause all audio
+            if ("pause".equals(data)) {
+                notMinimized = false;
+                for (AudioPlayer audio : this.players.values()) {
+                    if (audio.getState() == AudioPlayer.STATE.MEDIA_RUNNING.ordinal()) {
+                        this.paused.add(audio);
+                        audio.pausePlaying();
+                    }
+                }
+
+            }
+
+            // If app resumes, then resume playing those players we paused
+            else if ("resume".equals(data)) {
+                notMinimized = true;
+                if (notInCall && notInOtherPage && notMinimized) {
+                    for (AudioPlayer audio : this.paused) {
+                        audio.startPlaying(null);
+                    }
+                    this.paused.clear();
+                }
+            }
+
+            //if app goes to other page
+            else if ("leave".equals(data)) {
+                notInOtherPage = false;
+                //if  app is minimized, then pause all audio
+                for (AudioPlayer audio : this.players.values()) {
+                    if (audio.getState() == AudioPlayer.STATE.MEDIA_RUNNING.ordinal()) {
+                        this.paused.add(audio);
+                        audio.pausePlaying();
+                    }
+                }
+            }
+
+            //if app comes back
+            else if ("comeback".equals(data)) {
+                notInOtherPage = true;
+                if (notInCall && notInOtherPage && notMinimized) {
+                    for (AudioPlayer audio : this.paused) {
+                        audio.startPlaying(null);
+                    }
+                    this.paused.clear();
+                }
             }
         }
         return null;
